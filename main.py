@@ -2,15 +2,39 @@ import os
 import dotenv
 import socket
 import json
+import re
+
+def parse_snort_message(message: str) -> dict:
+    """Parse the Snort message for detailed information."""
+    # Regex pattern to extract information, including Classification
+    pattern = r"(?P<timestamp>[\d/:-]+)\s+\[\*\*\]\s+\[(?P<gid>\d+):(?P<sid>\d+):(?P<rev>\d+)\]\s+(?P<alert>[^\[\]]+)\s+\[\*\*\]\s+\[Classification:\s*(?P<classification>[^\]]+)\]\s+\[Priority:\s*(?P<priority>\d+)\]\s+\{(?P<protocol>[A-Z]+)\}\s+(?P<src_ip>[\d.]+):(?P<src_port>\d+)\s+->\s+(?P<dst_ip>[\d.]+):(?P<dst_port>\d+)"
+    match = re.search(pattern, message)
+    if match:
+        return match.groupdict()
+    return {}
 
 def socket_log_receive_callback(data: str) -> None:
     try:
         data_json = json.loads(data)
-        if "snort_event" in data_json:         # Example condition for Snort data
+        if data_json.get("log_type") == "snort_alert":
             print("Snort Event Detected:")
-        print(json.dumps(data_json, indent=4))
+            snort_details = parse_snort_message(data_json.get("message", ""))
+            processed_data = {
+                "timestamp": data_json.get("@timestamp"),
+                "alert_details": snort_details,
+                "classification": snort_details.get("classification", "Unknown"),
+                "agent": data_json.get("agent", {}),
+                "host": data_json.get("host", {}),
+                "log_path": data_json.get("log", {}).get("file", {}).get("path"),
+                "raw_message": data_json.get("event", {}).get("original"),
+            }
+            print(json.dumps(processed_data, indent=4))
+        else:
+            print("Non-Snort log data received.")
+            print(json.dumps(data_json, indent=4))
     except json.JSONDecodeError:
         print("Raw data received:", data)
+
 
 def initiate_server(logstash_source_host: str, logstash_source_port: int) -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
