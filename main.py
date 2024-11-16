@@ -4,9 +4,13 @@ import socket
 import json
 
 def socket_log_receive_callback(data: str) -> None:
-    # Just print the data with pretty JSON format
-    data_json = json.loads(data)
-    print(json.dumps(data_json, indent=4))
+    try:
+        data_json = json.loads(data)
+        if "snort_event" in data_json:         # Example condition for Snort data
+            print("Snort Event Detected:")
+        print(json.dumps(data_json, indent=4))
+    except json.JSONDecodeError:
+        print("Raw data received:", data)
 
 def initiate_server(logstash_source_host: str, logstash_source_port: int) -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
