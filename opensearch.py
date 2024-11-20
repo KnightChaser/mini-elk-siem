@@ -12,6 +12,49 @@ OPENSEARCH_INDEX = os.getenv("OPENSEARCH_INDEX")
 OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
 
+def create_index_with_mapping(client: OpenSearch, index_name: str) -> None:
+    """
+    Create an OpenSearch index with a predefined mapping.
+    
+    Args:
+        client (OpenSearch): The OpenSearch client.
+        index_name (str): The name of the index.
+    """
+    mapping = {
+        "mappings": {
+            "properties": {
+                "timestamp": {
+                    "type": "date",
+                    "format": "yyyy/MM/dd HH:mm:ss Z"
+                },
+                "client_ip": {
+                    "type": "ip"
+                },
+                "method": {
+                    "type": "keyword"
+                },
+                "request": {
+                    "type": "text"
+                },
+                "attack_type": {
+                    "type": "keyword"
+                },
+                "status": {
+                    "type": "keyword"
+                }
+            }
+        }
+    }
+
+    try:
+        if not client.indices.exists(index=index_name):
+            response = client.indices.create(index=index_name, body=mapping)
+            print(f"Index {index_name} created with mapping: {response}")
+        else:
+            print(f"Index {index_name} already exists.")
+    except Exception as e:
+        print(f"Failed to create index: {e}")
+
 # Initialize OpenSearch client
 def get_opensearch_client() -> OpenSearch:
     """

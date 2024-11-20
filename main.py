@@ -7,10 +7,11 @@ import re
 import signal
 import urllib.parse  # Added for URL decoding
 import logging
+from datetime import datetime
 from json import JSONDecodeError
 from termcolor import colored
 from detectors import detect_attack_type
-from opensearch import get_opensearch_client, push_to_opensearch
+from opensearch import create_index_with_mapping, get_opensearch_client, push_to_opensearch
 
 # Configure logging
 logging.basicConfig(
@@ -99,19 +100,22 @@ def socket_log_receive_callback(data: str) -> None:
         event_dataset = data_json.get("event", {}).get("dataset")
         if event_dataset != "nginx.access":
             print("Non-nginx log data received.")
-            return  # Early exit if log type is not nginx_access
+            return  
 
         nginx_details = parse_nginx_message(data_json)
 
         # Extract relevant fields
         timestamp = nginx_details.get("timestamp")
+        assert timestamp, "Timestamp field is missing while trying to insert data to OpenSearch"
+        timestamp = datetime.strptime(timestamp, "%d/%b/%Y:%H:%M:%S %z")
+        timestamp = timestamp.strftime("%Y/%m/%d %H:%M:%S %z") # Convert to ISO 8601 format :)
         client_ip = nginx_details.get("client_ip")
         method = nginx_details.get("method")
         request = nginx_details.get("request")
 
         if not request:
             print("Invalid request format received.")
-            return  # Early exit if request is missing
+            return  
 
         # Decode the URL-encoded request
         decoded_request = urllib.parse.unquote_plus(request)
@@ -203,5 +207,6 @@ def main():
 
 
 if __name__ == "__main__":
+    create_index_with_mapping(get_opensearch_client(), "nginx-logs")
     main()
 
