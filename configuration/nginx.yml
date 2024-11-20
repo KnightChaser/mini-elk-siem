@@ -1,0 +1,22 @@
+# /etc/filebeat/modules.d/nginx.yml
+# Install filebeat, and install & enable filebeat nginx module by "sudo filebeat modules enable nginx"
+
+# Module: nginx
+# Docs: https://www.elastic.co/guide/en/beats/filebeat/main/filebeat-module-nginx.html
+
+- module: nginx
+  access:
+    enabled: true
+    var.paths: ["/var/log/nginx/access.log*"]
+  error:
+    enabled: true
+    var.paths: ["/var/log/nginx/error.log*"]
+
+  # Ingress-nginx controller logs. This is disabled by default. It could be used in Kubernetes environments to parse ingress-nginx logs
+  ingress_controller:
+    enabled: false
+
+    # Set custom paths for the log files. If left empty,
+    # Filebeat will choose the paths depending on your OS.
+    #var.paths:
+

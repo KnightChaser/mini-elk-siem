@@ -1,12 +1,7 @@
 # /etc/filebeat/filebeat.yml
-filebeat.inputs:
-- type: log
-  enabled: true
-  paths:
-    - /var/log/nginx/access.log
-  fields:
-    log_type: nginx_access
-  fields_under_root: true
+filebeat.config.modules:
+  path: ${path.config}/modules.d/*.yml
+  reload.enabled: true
 
 output.logstash:
   hosts: ["localhost:5044"]
