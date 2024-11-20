@@ -3,16 +3,13 @@ filebeat.inputs:
 - type: log
   enabled: true
   paths:
-    - /var/log/snort/snort.alert.fast  # Path to Snort alert file
+    - /var/log/nginx/access.log
   fields:
-    log_type: snort_alert
+    log_type: nginx_access
   fields_under_root: true
-  multiline.pattern: '^\d{2}/\d{2}-\d{2}:\d{2}:\d{2}\.\d+'  # Start of a new log entry
-  multiline.negate: true
-  multiline.match: after
 
 output.logstash:
-  hosts: ["localhost:5044"]  # Forward logs to Logstash
+  hosts: ["localhost:5044"]
 
 logging.level: info
 logging.to_files: true

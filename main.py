@@ -4,47 +4,66 @@ import socket
 import json
 import re
 
-def parse_snort_message(message: str) -> dict:
-    """Parse the Snort message for detailed information."""
-    # Regex pattern to extract information, including Classification
-    pattern = r"(?P<timestamp>[\d/:-]+)\s+\[\*\*\]\s+\[(?P<gid>\d+):(?P<sid>\d+):(?P<rev>\d+)\]\s+(?P<alert>[^\[\]]+)\s+\[\*\*\]\s+\[Classification:\s*(?P<classification>[^\]]+)\]\s+\[Priority:\s*(?P<priority>\d+)\]\s+\{(?P<protocol>[A-Z]+)\}\s+(?P<src_ip>[\d.]+):(?P<src_port>\d+)\s+->\s+(?P<dst_ip>[\d.]+):(?P<dst_port>\d+)"
-    match = re.search(pattern, message)
+
+def parse_nginx_message(data: dict) -> dict:
+    """
+    Parse the nginx message for detailed information.
+    Extracts key fields like client IP, method, request, response code, and timestamp.
+    """
+    # Regex to match the log format
+    log_pattern = (
+        r"(?P<client_ip>[\d.]+) - - \[(?P<timestamp>[^\]]+)\] "
+        r"\"(?P<method>[A-Z]+) (?P<request>[^\s]+) HTTP/(?P<http_version>[^\"]+)\" "
+        r"(?P<response_code>\d+) (?P<bytes>(?:\d+|-))"
+    )
+    
+    message = data.get("message", "")
+    match = re.match(log_pattern, message)
+    
     if match:
-        return match.groupdict()
-    return {}
+        return match.groupdict()  # Extract matched groups into a dictionary
+    else:
+        return {
+            "client_ip": None,
+            "method": None,
+            "request": None,
+            "response_code": None,
+            "timestamp": None,
+        }
+
 
 def socket_log_receive_callback(data: str) -> None:
+    """
+    Callback function to process data received from the Logstash socket.
+    """
     try:
         data_json = json.loads(data)
-        if data_json.get("log_type") == "snort_alert":
-            print("Snort Event Detected:")
-            snort_details = parse_snort_message(data_json.get("message", ""))
-            processed_data = {
-                "timestamp": data_json.get("@timestamp"),
-                "alert_details": snort_details,
-                "classification": snort_details.get("classification", "Unknown"),
-                "agent": data_json.get("agent", {}),
-                "host": data_json.get("host", {}),
-                "log_path": data_json.get("log", {}).get("file", {}).get("path"),
-                "raw_message": data_json.get("event", {}).get("original"),
-            }
-            print(json.dumps(processed_data, indent=4))
+        if data_json.get("log_type") == "nginx_access":
+            print("Nginx Access Log Event:")
+            print("Raw data:", data)
+            print("Parsed JSON:", data_json)
+
+            nginx_details = parse_nginx_message(data_json)
+            print("Parsed nginx log details:")
+            print(json.dumps(nginx_details, indent=4))
         else:
-            print("Non-Snort log data received.")
+            print("Non-nginx log data received.")
             print(json.dumps(data_json, indent=4))
     except json.JSONDecodeError:
         print("Raw data received:", data)
 
 
 def initiate_server(logstash_source_host: str, logstash_source_port: int) -> None:
+    """
+    Initiates a TCP server to receive data from Logstash.
+    """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
         # Override the port if it's already in use
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
 
-        # Initiate the session
         server_socket.bind((logstash_source_host, logstash_source_port))
-        server_socket.listen(1) 
+        server_socket.listen(1)
         print(f"Listening on {logstash_source_host}:{logstash_source_port}")
         socket_connection, address = server_socket.accept()
         with socket_connection:
@@ -56,6 +75,7 @@ def initiate_server(logstash_source_host: str, logstash_source_port: int) -> Non
                 data = data.decode('utf-8')
                 socket_log_receive_callback(data)
 
+
 if __name__ == "__main__":
     dotenv.load_dotenv()
 
@@ -64,7 +84,8 @@ if __name__ == "__main__":
     if not LOGSTASH_SOURCE_HOST or not LOGSTASH_SOURCE_PORT:
         raise ValueError("Please specify LOGSTASH_SOURCE_HOST and LOGSTASH_SOURCE_PORT in .env file")
 
-    logstash_source_host:str = LOGSTASH_SOURCE_HOST
-    logstash_source_port:int = int(LOGSTASH_SOURCE_PORT)
+    logstash_source_host: str = LOGSTASH_SOURCE_HOST
+    logstash_source_port: int = int(LOGSTASH_SOURCE_PORT)
 
     initiate_server(logstash_source_host, logstash_source_port)
+
