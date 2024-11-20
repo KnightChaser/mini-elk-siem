@@ -1,6 +1,0 @@
-# /etc/snort/rules/basic-sqli.rules
-alert tcp any any -> any 80 (msg: "SQL Injection Detected - AND"; content: "and"; nocase; pcre: "/(%20|\\s)+and(%20|\\s)+/i"; sid:100000100; rev:2;)
-alert tcp any any -> any 80 (msg: "SQL Injection Detected - OR"; content: " or "; nocase; pcre: "/\\sor\\s.*(=|like|>|<|!=)/i"; sid:100000101; rev:1;)
-alert tcp any any -> any 80 (msg: "SQL Injection Detected - UNION SELECT"; content: "union select"; nocase; sid:100000102; rev:1;)
-alert tcp any any -> any 80 (msg: "SQL Injection Detected - Comment"; content: "--"; nocase; sid:100000103; rev:1;)
-alert tcp any any -> any 80 (msg: "SQL Injection Detected - Single Quote"; content: "'"; nocase; sid:100000104; rev:1;)
