@@ -6,11 +6,11 @@ import json
 import re
 import signal
 import urllib.parse  # Added for URL decoding
-from detectors import detect_attack_type
-from termcolor import colored
-from json import JSONDecodeError
-
 import logging
+from json import JSONDecodeError
+from termcolor import colored
+from detectors import detect_attack_type
+from opensearch import get_opensearch_client, push_to_opensearch
 
 # Configure logging
 logging.basicConfig(
@@ -84,23 +84,21 @@ def signal_handler(sig, frame):
     cleanup_server()
     exit(0)
 
-
 def socket_log_receive_callback(data: str) -> None:
     """
     Callback function to process data received from the TCP socket.
-    Detects suspicious activity and logs the request.
+    Detects suspicious activity, logs the request, and pushes data to OpenSearch.
     """
     try:
-        # Debug raw data for troubleshooting
-        logging.info(f"Raw data received: {data}")
+        print(f"Raw data received: {data}")
 
-        # Attempt to parse data as JSON
+        # Parse incoming data as JSON
         data_json = json.loads(data)
 
-        # Identify if the log is from nginx access using event.dataset
+        # Identify if the log is from nginx access
         event_dataset = data_json.get("event", {}).get("dataset")
         if event_dataset != "nginx.access":
-            logging.info("Non-nginx log data received.")
+            print("Non-nginx log data received.")
             return  # Early exit if log type is not nginx_access
 
         nginx_details = parse_nginx_message(data_json)
@@ -112,27 +110,37 @@ def socket_log_receive_callback(data: str) -> None:
         request = nginx_details.get("request")
 
         if not request:
-            logging.warning("Invalid request format received.")
+            print("Invalid request format received.")
             return  # Early exit if request is missing
 
         # Decode the URL-encoded request
         decoded_request = urllib.parse.unquote_plus(request)
-        logging.debug(f"Decoded request: {decoded_request}")  # Optional: For debugging
-
-        # Detect suspicious activity using the decoded request
         attack_type = detect_attack_type(decoded_request)
-        if attack_type:
-            assert timestamp and client_ip and method and decoded_request and attack_type, "One or more fields missing"
-            print_suspicious(timestamp, client_ip, method, decoded_request, attack_type)
-        else:
-            assert timestamp and client_ip and method and decoded_request, "One or more fields missing"
-            print_benign(timestamp, client_ip, method, decoded_request)
+
+        # Determine log status (benign/suspicious)
+        status = "suspicious" if attack_type else "benign"
+        assert timestamp and client_ip and method and decoded_request and status, "At least one of fields is missing while trying to insert data to OpenSearch"
+        print_suspicious(timestamp, client_ip, method, decoded_request, attack_type) if attack_type else print_benign(timestamp, client_ip, method, decoded_request)
+
+        # Prepare data for OpenSearch
+        opensearch_data = {
+            "timestamp": timestamp,
+            "client_ip": client_ip,
+            "method": method,
+            "request": decoded_request,
+            "attack_type": attack_type,
+            "status": status,
+        }
+
+        # Push data to OpenSearch
+        opensearch_client = get_opensearch_client()
+        push_to_opensearch(opensearch_client, opensearch_data)
 
     except JSONDecodeError as e:
-        logging.error(f"JSON decoding error: {e}")
-        logging.error(f"Unparsed data: {data}")
+        print(f"JSON decoding error: {e}")
+        print(f"Unparsed data: {data}")
     except Exception as e:
-        logging.exception(f"Exception occurred in callback: {e}")
+        print(f"Exception occurred in callback: {e}")
 
 
 def initiate_server(logstash_source_host: str, logstash_source_port: int) -> None:
