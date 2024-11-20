@@ -5,9 +5,22 @@ import socket
 import json
 import re
 import signal
+import urllib.parse  # Added for URL decoding
 from detectors import detect_attack_type
 from termcolor import colored
 from json import JSONDecodeError
+
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler("server.log")
+    ]
+)
 
 server_socket = None  # Global reference to the server socket for cleanup
 
@@ -15,7 +28,6 @@ def parse_nginx_message(data: dict) -> dict:
     """
     Parse the nginx message for detailed information.
     Extracts key fields like client IP, method, request, response code, and timestamp.
-    Personal note: It would be improved in case of using filebeat nginx service since it provides better metadata.
     """
     log_pattern = (
         r"(?P<client_ip>[\d.]+) - - \[(?P<timestamp>[^\]]+)\] "
@@ -43,7 +55,7 @@ def print_suspicious(timestamp: str, client_ip: str, method: str, request: str, 
     Print suspicious requests in red color.
     """
     output = f"[{timestamp}] [{client_ip}] [{method}] [{request}] => suspicious of [{attack_type}]"
-    print(colored(output, "red"))
+    print(colored(output, "red")) 
 
 
 def print_benign(timestamp: str, client_ip: str, method: str, request: str) -> None:
@@ -53,6 +65,7 @@ def print_benign(timestamp: str, client_ip: str, method: str, request: str) -> N
     output = f"[{timestamp}] [{client_ip}] [{method}] [{request}]"
     print(colored(output, "green"))
 
+
 def cleanup_server() -> None:
     """
     Cleanup server resources on shutdown.
@@ -60,16 +73,17 @@ def cleanup_server() -> None:
     global server_socket
     if server_socket:
         server_socket.close()
-        print("Server socket closed.")
+        logging.info("Server socket closed.")
 
 
 def signal_handler(sig, frame):
     """
     Handle termination signals to cleanup resources.
     """
-    print("\nGraceful shutdown initiated...")
+    logging.info("Graceful shutdown initiated...")
     cleanup_server()
     exit(0)
+
 
 def socket_log_receive_callback(data: str) -> None:
     """
@@ -78,7 +92,7 @@ def socket_log_receive_callback(data: str) -> None:
     """
     try:
         # Debug raw data for troubleshooting
-        print(f"Raw data received: {data}")
+        logging.info(f"Raw data received: {data}")
 
         # Attempt to parse data as JSON
         data_json = json.loads(data)
@@ -86,7 +100,7 @@ def socket_log_receive_callback(data: str) -> None:
         # Identify if the log is from nginx access using event.dataset
         event_dataset = data_json.get("event", {}).get("dataset")
         if event_dataset != "nginx.access":
-            print("Non-nginx log data received.")
+            logging.info("Non-nginx log data received.")
             return  # Early exit if log type is not nginx_access
 
         nginx_details = parse_nginx_message(data_json)
@@ -98,23 +112,27 @@ def socket_log_receive_callback(data: str) -> None:
         request = nginx_details.get("request")
 
         if not request:
-            print("Invalid request format received.")
+            logging.warning("Invalid request format received.")
             return  # Early exit if request is missing
 
-        # Detect suspicious activity
-        attack_type = detect_attack_type(request)
+        # Decode the URL-encoded request
+        decoded_request = urllib.parse.unquote_plus(request)
+        logging.debug(f"Decoded request: {decoded_request}")  # Optional: For debugging
+
+        # Detect suspicious activity using the decoded request
+        attack_type = detect_attack_type(decoded_request)
         if attack_type:
-            assert timestamp and client_ip and method and request and attack_type, "One or more fields missing"
-            print_suspicious(timestamp, client_ip, method, request, attack_type)
+            assert timestamp and client_ip and method and decoded_request and attack_type, "One or more fields missing"
+            print_suspicious(timestamp, client_ip, method, decoded_request, attack_type)
         else:
-            assert timestamp and client_ip and method and request, "One or more fields missing"
-            print_benign(timestamp, client_ip, method, request)
+            assert timestamp and client_ip and method and decoded_request, "One or more fields missing"
+            print_benign(timestamp, client_ip, method, decoded_request)
 
     except JSONDecodeError as e:
-        print(f"JSON decoding error: {e}")
-        print(f"Unparsed data: {data}")
+        logging.error(f"JSON decoding error: {e}")
+        logging.error(f"Unparsed data: {data}")
     except Exception as e:
-        print(f"Exception occurred in callback: {e}")
+        logging.exception(f"Exception occurred in callback: {e}")
 
 
 def initiate_server(logstash_source_host: str, logstash_source_port: int) -> None:
@@ -129,11 +147,11 @@ def initiate_server(logstash_source_host: str, logstash_source_port: int) -> Non
     try:
         server_socket.bind((logstash_source_host, logstash_source_port))
         server_socket.listen(1)
-        print(f"Listening on {logstash_source_host}:{logstash_source_port}")
+        logging.info(f"Listening on {logstash_source_host}:{logstash_source_port}")
 
         while True:
             socket_connection, address = server_socket.accept()
-            print(f"Socket connected to {address}")
+            logging.info(f"Socket connected to {address}")
             with socket_connection:
                 buffer = ""
                 while True:
@@ -151,9 +169,10 @@ def initiate_server(logstash_source_host: str, logstash_source_port: int) -> Non
                             buffer = buffer[idx:].lstrip()  # Remove processed data
                         except JSONDecodeError:
                             break  # Wait for more data if JSON is incomplete
-            print(f"Connection to {address} closed")
+            logging.info(f"Connection to {address} closed")
     finally:
         cleanup_server()
+
 
 def main():
     dotenv.load_dotenv()
