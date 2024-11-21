@@ -58,14 +58,15 @@ def parse_nginx_message(data: dict) -> dict:
         "response_code": None,
     }
 
-
-def print_suspicious(timestamp: str, client_ip: str, method: str, request: str, attack_type: str) -> None:
+def print_suspicious(timestamp: str, client_ip: str, method: str, request: str, attack_type: dict) -> None:
     """
     Print suspicious requests in red color.
     """
-    output = f"[{timestamp}] [{client_ip}] [{method}] [{request}] => suspicious of [{attack_type}]"
-    print(colored(output, "red")) 
-
+    output = (
+        f"[{timestamp}] [{client_ip}] [{method}] [{request}] => "
+        f"suspicious of [{attack_type['type']} - {attack_type['sub_attack_type']}]"
+    )
+    print(colored(output, "red"))
 
 def print_benign(timestamp: str, client_ip: str, method: str, request: str) -> None:
     """
@@ -73,7 +74,6 @@ def print_benign(timestamp: str, client_ip: str, method: str, request: str) -> N
     """
     output = f"[{timestamp}] [{client_ip}] [{method}] [{request}]"
     print(colored(output, "green"))
-
 
 def cleanup_server() -> None:
     """
@@ -83,7 +83,6 @@ def cleanup_server() -> None:
     if server_socket:
         server_socket.close()
         logging.info("Server socket closed.")
-
 
 def signal_handler(sig, frame):
     """
@@ -119,7 +118,7 @@ def socket_log_receive_callback(data: str) -> None:
             return
 
         timestamp = datetime.strptime(timestamp, "%d/%b/%Y:%H:%M:%S %z")
-        timestamp = timestamp.strftime("%Y/%m/%d %H:%M:%S %z")  # Convert to ISO 8601 format
+        timestamp = timestamp.strftime("%Y/%m/%d %H:%M:%S %z")  # Convert to specified format
         client_ip = nginx_details.get("client_ip")
         method = nginx_details.get("method")
         request = nginx_details.get("request")
@@ -135,7 +134,11 @@ def socket_log_receive_callback(data: str) -> None:
         # Determine log status (benign/suspicious)
         status = "suspicious" if attack_type else "benign"
         logging.info(f"Log Status: {status}")
-        print_suspicious(timestamp, client_ip, method, decoded_request, attack_type) if attack_type else print_benign(timestamp, client_ip, method, decoded_request)
+
+        if attack_type:
+            print_suspicious(timestamp, client_ip, method, decoded_request, attack_type)
+        else:
+            print_benign(timestamp, client_ip, method, decoded_request)
 
         # Prepare data for OpenSearch
         opensearch_data = {
@@ -143,7 +146,7 @@ def socket_log_receive_callback(data: str) -> None:
             "client_ip": client_ip,
             "method": method,
             "request": decoded_request,
-            "attack_type": attack_type,
+            "attack_type": attack_type if attack_type else {},
             "status": status,
         }
 
@@ -195,7 +198,6 @@ def initiate_server(logstash_source_host: str, logstash_source_port: int) -> Non
     finally:
         cleanup_server()
 
-
 def main():
     dotenv.load_dotenv()
 
@@ -214,7 +216,6 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     initiate_server(LOGSTASH_SOURCE_HOST, logstash_source_port)
-
 
 if __name__ == "__main__":
     create_index_with_mapping(get_opensearch_client(), "nginx-logs")

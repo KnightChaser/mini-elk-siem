@@ -1,3 +1,4 @@
+# opensearch.py
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests.auth import HTTPBasicAuth
 import os
@@ -21,30 +22,39 @@ def create_index_with_mapping(client: OpenSearch, index_name: str) -> None:
         index_name (str): The name of the index.
     """
     mapping = {
-        "mappings": {
+      "mappings": {
+        "properties": {
+          "timestamp": {
+            "type": "date",
+            "format": "yyyy/MM/dd HH:mm:ss Z"
+          },
+          "client_ip": {
+            "type": "ip"
+          },
+          "method": {
+            "type": "keyword"
+          },
+          "request": {
+            "type": "text"
+          },
+          "attack_type": {
+            "type": "object",
             "properties": {
-                "timestamp": {
-                    "type": "date",
-                    "format": "yyyy/MM/dd HH:mm:ss Z"
-                },
-                "client_ip": {
-                    "type": "ip"
-                },
-                "method": {
-                    "type": "keyword"
-                },
-                "request": {
-                    "type": "text"
-                },
-                "attack_type": {
-                    "type": "keyword"
-                },
-                "status": {
-                    "type": "keyword"
-                }
+              "type": {
+                "type": "keyword"
+              },
+              "sub_attack_type": {
+                "type": "keyword"
+              }
             }
+          },
+          "status": {
+            "type": "keyword"
+          }
         }
+      }
     }
+
 
     try:
         if not client.indices.exists(index=index_name):
