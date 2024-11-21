@@ -3,10 +3,10 @@
 A simple demonstration of SIEM for small NGINX web server, building a simple data pipeline with Filebeat, Logstash, AWS OpenSearch, and Python.
 
 ### Preview
+![image](https://github.com/user-attachments/assets/2c46659f-2e04-483c-9085-f8dad97c412d)
 
-![image](https://github.com/user-attachments/assets/1de38e6e-bd08-4397-9f2a-d67d920f1473)
+![image](https://github.com/user-attachments/assets/b68d73ad-829e-40b7-a383-00e15fdab569)
 
-![Screenshot from 2024-11-20 23-21-17](https://github.com/user-attachments/assets/e80e811e-a4ae-404f-af96-42cff0ff3991)
 
 ### Installation
 
