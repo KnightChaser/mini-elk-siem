@@ -30,25 +30,33 @@ def parse_nginx_message(data: dict) -> dict:
     Parse the nginx message for detailed information.
     Extracts key fields like client IP, method, request, response code, and timestamp.
     """
+    message = data.get("message", "")
     log_pattern = (
-        r"(?P<client_ip>[\d.]+) - - \[(?P<timestamp>[^\]]+)\] "
-        r"\"(?P<method>[A-Z]+) (?P<request>[^\s]+) HTTP/(?P<http_version>[^\"]+)\" "
+        r"^(?P<client_ip>[^\s]+) - - \[(?P<timestamp>[^\]]+)\] "
+        r"\"(?P<method>[A-Z]+) (?P<request>[^\s]+) HTTP/[^\"]+\" "
         r"(?P<response_code>\d+) (?P<bytes>(?:\d+|-))"
     )
 
-    message = data.get("message", "")
     match = re.match(log_pattern, message)
-
     if match:
-        return match.groupdict()
-    else:
+        # Extract matched groups safely
         return {
-            "client_ip": None,
-            "timestamp": None,
-            "method": None,
-            "request": None,
-            "response_code": None,
+            "client_ip": match.group("client_ip"),
+            "timestamp": match.group("timestamp"),
+            "method": match.group("method"),
+            "request": match.group("request"),
+            "response_code": match.group("response_code"),
         }
+
+    # Fallback for invalid formats
+    logging.warning(f"Failed to parse nginx message: {message}")
+    return {
+        "client_ip": None,
+        "timestamp": None,
+        "method": None,
+        "request": None,
+        "response_code": None,
+    }
 
 
 def print_suspicious(timestamp: str, client_ip: str, method: str, request: str, attack_type: str) -> None:
@@ -91,31 +99,34 @@ def socket_log_receive_callback(data: str) -> None:
     Detects suspicious activity, logs the request, and pushes data to OpenSearch.
     """
     try:
-        print(f"Raw data received: {data}")
+        logging.info(f"Raw data received: {data}")
 
         # Parse incoming data as JSON
         data_json = json.loads(data)
 
-        # Identify if the log is from nginx access
-        event_dataset = data_json.get("event", {}).get("dataset")
-        if event_dataset != "nginx.access":
-            print("Non-nginx log data received.")
-            return  
+        # Identify if the log is from nginx access based on 'source_type'
+        source_type = data_json.get("source_type")
+        if source_type != "nginx":
+            logging.warning("Non-nginx log data received.")
+            return
 
         nginx_details = parse_nginx_message(data_json)
 
         # Extract relevant fields
         timestamp = nginx_details.get("timestamp")
-        assert timestamp, "Timestamp field is missing while trying to insert data to OpenSearch"
+        if not timestamp:
+            logging.error("Missing timestamp in log.")
+            return
+
         timestamp = datetime.strptime(timestamp, "%d/%b/%Y:%H:%M:%S %z")
-        timestamp = timestamp.strftime("%Y/%m/%d %H:%M:%S %z") # Convert to ISO 8601 format :)
+        timestamp = timestamp.strftime("%Y/%m/%d %H:%M:%S %z")  # Convert to ISO 8601 format
         client_ip = nginx_details.get("client_ip")
         method = nginx_details.get("method")
         request = nginx_details.get("request")
 
         if not request:
-            print("Invalid request format received.")
-            return  
+            logging.error("Invalid request format received.")
+            return
 
         # Decode the URL-encoded request
         decoded_request = urllib.parse.unquote_plus(request)
@@ -123,7 +134,7 @@ def socket_log_receive_callback(data: str) -> None:
 
         # Determine log status (benign/suspicious)
         status = "suspicious" if attack_type else "benign"
-        assert timestamp and client_ip and method and decoded_request and status, "At least one of fields is missing while trying to insert data to OpenSearch"
+        logging.info(f"Log Status: {status}")
         print_suspicious(timestamp, client_ip, method, decoded_request, attack_type) if attack_type else print_benign(timestamp, client_ip, method, decoded_request)
 
         # Prepare data for OpenSearch
@@ -141,11 +152,10 @@ def socket_log_receive_callback(data: str) -> None:
         push_to_opensearch(opensearch_client, opensearch_data)
 
     except JSONDecodeError as e:
-        print(f"JSON decoding error: {e}")
-        print(f"Unparsed data: {data}")
+        logging.error(f"JSON decoding error: {e}")
+        logging.error(f"Unparsed data: {data}")
     except Exception as e:
-        print(f"Exception occurred in callback: {e}")
-
+        logging.exception(f"Exception occurred in callback: {e}")
 
 def initiate_server(logstash_source_host: str, logstash_source_port: int) -> None:
     """
