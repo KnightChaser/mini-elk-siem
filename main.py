@@ -119,8 +119,8 @@ def socket_log_receive_callback(data: str) -> None:
 
         timestamp = datetime.strptime(timestamp, "%d/%b/%Y:%H:%M:%S %z")
         timestamp = timestamp.strftime("%Y/%m/%d %H:%M:%S %z")  # Convert to specified format
-        client_ip = nginx_details.get("client_ip")
-        method = nginx_details.get("method")
+        client_ip = nginx_details.get("client_ip") if nginx_details.get("client_ip") else None
+        method = nginx_details.get("method") if nginx_details.get("method") else None
         request = nginx_details.get("request")
 
         if not request:

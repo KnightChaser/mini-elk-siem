@@ -68,20 +68,37 @@ def create_index_with_mapping(client: OpenSearch, index_name: str) -> None:
 # Initialize OpenSearch client
 def get_opensearch_client() -> OpenSearch:
     """
-    Create and return an OpenSearch client.
+    Create and return an OpenSearch client with dynamic SSL configuration.
     """
-    if not OPENSEARCH_URL or not OPENSEARCH_USERNAME or not OPENSEARCH_PASSWORD:
-        raise ValueError("OpenSearch configuration is missing in .env file")
+    # Fetch environment variables
+    OPENSEARCH_URL = os.getenv("OPENSEARCH_URL")
+    OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME")
+    OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
+    OPENSEARCH_VERIFY_CERTS = os.getenv("OPENSEARCH_VERIFY_CERTS", "True").lower() in ["true", "1", "t"]
 
+    # Validate configuration
+    if not OPENSEARCH_URL or not OPENSEARCH_USERNAME or not OPENSEARCH_PASSWORD:
+        raise ValueError("OpenSearch configuration is missing in the environment variables")
+
+    # Determine SSL settings based on the URL scheme
+    use_ssl = OPENSEARCH_URL.startswith("https")
+    verify_certs = use_ssl and OPENSEARCH_VERIFY_CERTS  # Verify certs only if using SSL and verification is enabled
+
+    # Log the connection details for debugging
+    protocol = "https" if use_ssl else "http"
+    host = OPENSEARCH_URL.split("://")[1].split(":")[0]
+    port = OPENSEARCH_URL.split(":")[-1]
+    print(f"Connecting to OpenSearch: {protocol}://{host}:{port}")
+
+    # Initialize the OpenSearch client
     client = OpenSearch(
         hosts=[OPENSEARCH_URL],
         http_auth=HTTPBasicAuth(OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD),
-        use_ssl=True,
-        verify_certs=True,
+        use_ssl=use_ssl,
+        verify_certs=verify_certs,
         connection_class=RequestsHttpConnection,
     )
     return client
-
 def push_to_opensearch(client, data) -> None:
     """
     Push data to the OpenSearch index.
