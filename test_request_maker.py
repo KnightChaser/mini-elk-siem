@@ -81,7 +81,7 @@ def main():
         payload, request_type = generate_random_request()
         send_request(NGINX_SERVER_URL, payload, request_type)
         # Randomize the interval to ~3 requests/sec
-        time.sleep(random.uniform(0.25, 3))
+        time.sleep(random.uniform(0.25, 1))
 
 if __name__ == "__main__":
     main()
